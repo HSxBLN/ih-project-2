@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hauke-svc-result
+spec:
+  selector:
+    app: result
+  ports:
+    - port: 8081
+      targetPort: 80
