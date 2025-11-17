@@ -68,6 +68,7 @@ Add these *repository-level secrets* in **Settings → Secrets and variables →
 | AWS_SECRET_ACCESS_KEY  | AWS credentials          | AWS IAM Secret Access Key                           |
 | AWS_CLUSTERNAME        | EKS cluster connection   | The **name** of your AWS EKS cluster                |
 | AWS_REGION             | EKS cluster connection   | AWS region where your EKS cluster is located        |
+| NAMESPACE              | EKS cluster configuration| Creates and and switches Namespace                  |
 
 **All secrets are required for your pipeline to operate correctly!**
 
