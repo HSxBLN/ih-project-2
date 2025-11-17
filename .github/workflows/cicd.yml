@@ -9,6 +9,7 @@ on:
       - 'result/**'
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
