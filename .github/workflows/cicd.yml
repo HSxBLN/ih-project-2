@@ -3,8 +3,16 @@ name: Build Docker Image and Push it to Repo
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'worker/**'
+      - 'vote/**'
+      - 'result/**'
   pull_request:
     branches: [ "main" ]
+
+env:
+  REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
+  SHORT_SHA: ${{ github.sha }}
 
 jobs:
   build:
@@ -12,24 +20,93 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Für korrekte git diff Funktionalität
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
     - name: Log in to Docker Hub
       run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-    - name: Build images
+    - name: Check if worker changed
+      id: worker_changed
       run: |
-        docker build ./worker --file ./worker/Dockerfile --tag ${{ secrets.DOCKERHUB_USERNAME }}/worker:latest
-        docker build ./vote --file ./vote/Dockerfile --tag ${{ secrets.DOCKERHUB_USERNAME }}/vote:latest
-        docker build ./result --file ./result/Dockerfile --tag ${{ secrets.DOCKERHUB_USERNAME }}/result:latest
+        if [ -z "${{ github.event.before }}" ] || [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q '^worker/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=" >> $GITHUB_OUTPUT
+          fi
+        fi
 
-    - name: Push images
+    - name: Build and push worker image
+      if: steps.worker_changed.outputs.changed == 'true'
       run: |
+        docker build ./worker \
+          --file ./worker/Dockerfile \
+          --tag ${{ secrets.DOCKERHUB_USERNAME }}/worker:${{ env.SHORT_SHA }} \
+          --tag ${{ secrets.DOCKERHUB_USERNAME }}/worker:latest
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/worker:${{ env.SHORT_SHA }}
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/worker:latest
+
+    - name: Check if vote changed
+      id: vote_changed
+      run: |
+        if [ -z "${{ github.event.before }}" ] || [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q '^vote/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=" >> $GITHUB_OUTPUT
+          fi
+        fi
+
+    - name: Build and push vote image
+      if: steps.vote_changed.outputs.changed == 'true'
+      run: |
+        docker build ./vote \
+          --file ./vote/Dockerfile \
+          --tag ${{ secrets.DOCKERHUB_USERNAME }}/vote:${{ env.SHORT_SHA }} \
+          --tag ${{ secrets.DOCKERHUB_USERNAME }}/vote:latest
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/vote:${{ env.SHORT_SHA }}
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/vote:latest
+
+    - name: Check if result changed
+      id: result_changed
+      run: |
+        if [ -z "${{ github.event.before }}" ] || [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+        else
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q '^result/'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=" >> $GITHUB_OUTPUT
+          fi
+        fi
+
+    - name: Build and push result image
+      if: steps.result_changed.outputs.changed == 'true'
+      run: |
+        docker build ./result \
+          --file ./result/Dockerfile \
+          --tag ${{ secrets.DOCKERHUB_USERNAME }}/result:${{ env.SHORT_SHA }} \
+          --tag ${{ secrets.DOCKERHUB_USERNAME }}/result:latest
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/result:${{ env.SHORT_SHA }}
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/result:latest
+
+    - name: Logout from Docker Hub
+      if: always()
+      run: docker logout
+
   deploy:
     runs-on: ubuntu-latest
-    needs: [ build ]
+    needs: [build]
+    # Nur bei Push auf main deployen, nicht bei Pull Requests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
     - name: Configure AWS Credentials
@@ -46,7 +123,7 @@ jobs:
 
     - name: Update Kubeconfig
       run: eksctl utils write-kubeconfig --cluster ${{ secrets.AWS_CLUSTERNAME}} --region ${{ secrets.AWS_REGION}}
-    
+
     - name: Create Namespace
       run: kubectl create namespace ${{secrets.NAMESPACE}} --dry-run=client -o yaml | kubectl apply -f -
 
@@ -54,11 +131,24 @@ jobs:
       run: kubectl config set-context --current --namespace=${{secrets.NAMESPACE}}
 
     - name: Apply Kubernetes PVC Manifests
-      run: kubectl apply -f k8s/pvc/
-    - name: Apply Kubernetes Deployment Manifests
-      run: kubectl apply -f k8s/deployment/
-    - name: Apply Kubernetes Service Manifests
-      run: kubectl apply -f k8s/services/
-    - name: Apply Kubernetes Ingress Manifests
-      run: kubectl apply -f k8s/ingress/
+      run: kubectl apply -f k8s/pvc/ --dry-run=client -o yaml | kubectl apply -f -
 
+    - name: Apply Kubernetes Deployment Manifests
+      run: kubectl apply -f k8s/deployment/ --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Apply Kubernetes Service Manifests
+      run: kubectl apply -f k8s/services/ --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Apply Kubernetes Ingress Manifests
+      run: kubectl apply -f k8s/ingress/ --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Verify deployments
+      run: |
+        kubectl get deployments -n ${{secrets.NAMESPACE}}
+        kubectl get pods -n ${{secrets.NAMESPACE}}
+
+    - name: Wait for rollout to complete
+      run: |
+        kubectl rollout status deployment/worker -n ${{secrets.NAMESPACE}} --timeout=300s
+        kubectl rollout status deployment/vote -n ${{secrets.NAMESPACE}} --timeout=300s
+        kubectl rollout status deployment/result -n ${{secrets.NAMESPACE}} --timeout=300s
