@@ -10,6 +10,12 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      skip_build:
+        description: 'Skip build and only deploy'
+        required: false
+        type: boolean
+        default: false
 
 env:
   REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
