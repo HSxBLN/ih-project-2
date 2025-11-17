@@ -113,8 +113,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     # Nur bei Push auf main deployen, nicht bei Pull Requests
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch'
     steps:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v1
