@@ -45,8 +45,14 @@ jobs:
         sudo mv /tmp/eksctl /usr/local/bin
 
     - name: Update Kubeconfig
-      run: eksctl utils write-kubeconfig --cluster romain-voting-app-cluster --region eu-west-3
-
-    - name: Apply Kubernetes Manifests
-      run: kubectl apply -f K8s/
+      run: eksctl utils write-kubeconfig --cluster ${{ secrets.AWS_CLUSTERNAME}} --region ${{ secrets.AWS_REGION}}
+    
+    - name: Apply Kubernetes PVC Manifests
+      run: kubectl apply -f K8s/pvc/
+    - name: Apply Kubernetes Deployment Manifests
+      run: kubectl apply -f K8s/deployment/
+    - name: Apply Kubernetes Service Manifests
+      run: kubectl apply -f K8s/services/
+    - name: Apply Kubernetes Ingress Manifests
+      run: kubectl apply -f K8s/ingress/
 
