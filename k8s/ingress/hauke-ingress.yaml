@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hauke-ingress
+spec:
+  ingressClassName: nginx-tannaz
+  rules:
+    - host: result.hauke.diogohack.shop
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hauke-svc-result
+                port:
+                  number: 80
+    - host: vote.hauke.diogohack.shop
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hauke-svc-vote
+                port:
+                  number: 80
