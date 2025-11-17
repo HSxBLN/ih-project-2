@@ -3,19 +3,8 @@ name: Build Docker Image and Push it to Repo
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'worker/**'
-      - 'vote/**'
-      - 'result/**'
   pull_request:
     branches: [ "main" ]
-  workflow_dispatch:
-    inputs:
-      skip_build:
-        description: 'Skip build and only deploy'
-        required: false
-        type: boolean
-        default: false
 
 env:
   REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -28,7 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Für korrekte git diff Funktionalität
+        fetch-depth: 0
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
@@ -112,14 +101,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [build]
-    # Nur bei Push auf main deployen, nicht bei Pull Requests
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.event_name == 'workflow_dispatch'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -150,14 +135,3 @@ jobs:
 
     - name: Apply Kubernetes Ingress Manifests
       run: kubectl apply -f k8s/ingress/ --dry-run=client -o yaml | kubectl apply -f -
-
-    - name: Verify deployments
-      run: |
-        kubectl get deployments -n ${{secrets.NAMESPACE}}
-        kubectl get pods -n ${{secrets.NAMESPACE}}
-
-    - name: Wait for rollout to complete
-      run: |
-        kubectl rollout status deployment/worker -n ${{secrets.NAMESPACE}} --timeout=300s
-        kubectl rollout status deployment/vote -n ${{secrets.NAMESPACE}} --timeout=300s
-        kubectl rollout status deployment/result -n ${{secrets.NAMESPACE}} --timeout=300s
